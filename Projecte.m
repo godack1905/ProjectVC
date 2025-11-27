@@ -5,8 +5,8 @@ clear; clc; close all;
 train_path = 'imatges_senyals/train';
 
 % Definim la categoria i el nom de la imatge a processar
-categoria = 'limit';
-nombre_archivo = '003_0038.png';
+categoria = 'd_prohibida';
+nombre_archivo = '055_0007.png';
 
 
 %% 1. Carreguem la imatge
@@ -94,17 +94,10 @@ combi = bwareaopen(combi, 150);
 figure, imshow(colorMask), title('Color + Canny')
 
 
-%% 6. Extracció de contorns i ROI
+%% 6. Extracció de contorns
 
 contorns = bwboundaries(combi);
 stats = regionprops(combi, 'Area', 'BoundingBox', 'Solidity');
-
-if ~isempty(stats)
-    [~, idx] = max([stats.Area]);
-    roi_bbox = stats(idx).BoundingBox;
-else
-    roi_bbox = [];
-end
 
 
 %% 7. Apliquem la mascara a l'imatge original
@@ -117,19 +110,3 @@ for canal = 1:3
 end
 
 figure, imshow(img_procesada), title('Imatge procesada')
-
-
-
-%% 8. Informacio de resultats
-
-fprintf('Contorns detectats: %d\n', length(contorns));
-if ~isempty(roi_bbox)
-    fprintf('ROI: [x=%.1f, y=%.1f, ancho=%.1f, alto=%.1f]\n', ...
-            roi_bbox(1), roi_bbox(2), roi_bbox(3), roi_bbox(4));
-else
-    fprintf('No ROI\n');
-end
-fprintf('Píxeles de señal: %d\n', sum(combi(:)));
-fprintf('Píxeles de fondo: %d\n', sum(~combi(:)));
-
-fprintf('\n=== PROCESAMIENTO COMPLETADO ===\n');
