@@ -3,10 +3,10 @@
 
 
 train_path = 'imatges_senyals/train';
-
+  
 % Definim la categoria i el nom de la imatge a processar
-categoria = 'vianant';
-nombre_archivo = '035_1_0017.png';
+categoria = 'limit';
+nombre_archivo = '002_1_0003.png';
 
 
 %% 0. Carreguem la imatge
