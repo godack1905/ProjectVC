@@ -17,7 +17,7 @@ descriptor_names = {
 load('trainedModel.mat');
 
 % Imatge
-img_test = imread('imatges_senyals\test\vianant\035_1_0004.png');
+img_test = imread('imatges_senyals\test\limit\002_0013_j.png');
 desc_test = extractDescriptors(img_test);
 
 % Obtenir els descriptors de la imatge

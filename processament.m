@@ -5,8 +5,8 @@
 train_path = 'imatges_senyals/train';
 
 % Definim la categoria i el nom de la imatge a processar
-categoria = 'limit';
-nombre_archivo = 'road805.png';
+categoria = 'vianant';
+nombre_archivo = '035_1_0017.png';
 
 
 %% 0. Carreguem la imatge
