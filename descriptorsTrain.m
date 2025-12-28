@@ -8,14 +8,14 @@ train_path = 'imatges_senyals/train';
 categorias = {
     'd_obligatoria',        % circular, azul, flecha blanca
     'd_prohibida',          % circular, roja con franja blanca  
-    'limit',                % circular, blanca y roja, flecha negra tachada
-    'no_aparcar',           % circular, blanca y roja con numero negro
-    'no_girar',             % octogonal, roja con letras blancas
-    'no_soroll',            % triangular, amarilla con señor negro
-    'stop',                 % redonda, azul y roja, cruz roja en fondo azul
-    'vianant',              % redonda, azul con bici blanca
-    'zona_bici',            % redonda, blanca y roja, flecha negra tachada de rojo
-    'zona_cotxe'            % redonda, azul con coche blanco
+    'limit',                % circular, blanca y roja, numeros negros
+    'no_aparcar',           % circular, azul con rayas rojas
+    'no_girar',             % circular, blanca con flecha negra tachada de rojo
+    'no_soroll',            % circular, blanca con bocina negra tachada de rojo
+    'stop',                 % octogonal, roja con letras blancas STOP
+    'vianant',              % triangular, amarilla con persona negra
+    'zona_bici',            % circular, azul con bici blanca
+    'zona_cotxe'            % circular, azul con coche blanco
 };
 
 %% VERIFICAR ESTRUCTURA DE CARPETES
