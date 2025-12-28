@@ -6,7 +6,7 @@ train_path = 'imatges_senyals/train';
   
 % Definim la categoria i el nom de la imatge a processar
 categoria = 'limit';
-nombre_archivo = '002_1_0003.png';
+nombre_archivo = '004_1_0046.png';
 
 
 %% 0. Carreguem la imatge
