@@ -3,8 +3,8 @@
 clear; clc; close all;
 
 train_path = 'imatges_senyals/train';
-categoria = 'no_aparcar';
-nombre_archivo = '054_0147.png';
+categoria = 'stop';
+nombre_archivo = 'road59.png';
 
 %% Cargar imagen
 img_path = fullfile(train_path, categoria, nombre_archivo);
