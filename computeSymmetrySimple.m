@@ -1,5 +1,8 @@
+%% PRÀCTICA VC - RECONEIXEMENT DE SENYALS DE TRÀNSIT
+% Funcio per calcular la simetria
+
+
 function symmetry = computeSymmetrySimple(mask, direction)
-    % Calcula simetria simple
     [rows, cols] = size(mask);
     
     if strcmp(direction, 'horizontal')

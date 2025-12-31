@@ -33,15 +33,11 @@ labels_forma = {};
 descriptors_color = [];
 labels_color = {};
 
-% Model 3: Circulars roges (d_prohibida)
-descriptors_circ_rojo = [];
-labels_circ_rojo = {};
-
-% Model 4: Circulars blaves (d_obligatoria, no_aparcar, zona_bici, zona_cotxe)
+% Model 3: Circulars blaves (d_obligatoria, no_aparcar, zona_bici, zona_cotxe)
 descriptors_circ_azul = [];
 labels_circ_azul = {};
 
-% Model 5: Circulars blanques (limit, no_girar, no_soroll)
+% Model 4: Circulars blanques (limit, no_girar, no_soroll)
 descriptors_circ_blanco = [];
 labels_circ_blanco = {};
 
@@ -109,53 +105,78 @@ for cat_idx = 1:length(categorias)
                 continue;
             end
             
-            % Extreure descriptors jeràrquics
-            [desc_forma, desc_color, desc_detall] = extractDescriptors5Models(img);
+            % Extreure descriptors jeràrquics CON VERSIÓN ROBUSTA
+            [desc_forma, desc_color, desc_detall] = extractDescriptors4Models(img);
+            
+            % VERIFICAR TAMAÑOS ANTES DE CONCATENAR
+            if length(desc_forma) ~= 17
+                fprintf('  Advertencia: desc_forma tamaño incorrecto en %s (%d)\n', ...
+                    archivos(img_idx).name, length(desc_forma));
+                continue;  % Saltar esta imagen
+            end
+            
+            if length(desc_color) ~= 15
+                fprintf('  Advertencia: desc_color tamaño incorrecto en %s (%d)\n', ...
+                    archivos(img_idx).name, length(desc_color));
+                continue;  % Saltar esta imagen
+            end
+            
+            if length(desc_detall) ~= 30
+                fprintf('  Advertencia: desc_detall tamaño incorrecto en %s (%d)\n', ...
+                    archivos(img_idx).name, length(desc_detall));
+                continue;  % Saltar esta imagen
+            end
+            
+            % INICIALIZAR VARIABLES
+            label_forma = '';
+            label_color = '';
+            skip_color_model = false;
             
             % Determinar etiquetes segons categoria
             % Etiqueta per Model 1 (Forma)
             if strcmp(categoria, 'stop')
                 label_forma = 'octagonal';
+                skip_color_model = true;  % EXCLUIR del modelo de color
+                
             elseif strcmp(categoria, 'vianant')
                 label_forma = 'triangular';
+                skip_color_model = true;  % EXCLUIR del modelo de color
+                
             else
                 label_forma = 'circular';
             end
             
-            % Etiqueta per Model 2 (Color)
-            if ismember(categoria, {'d_prohibida', 'stop'})
-                label_color = 'red';
-            elseif ismember(categoria, {'d_obligatoria', 'no_aparcar', 'zona_bici', 'zona_cotxe'})
-                label_color = 'blue';
-            else
-                label_color = 'white';
+            % Etiqueta per Model 2 (Color) - SOLO para señales circulares
+            if ~skip_color_model
+                if ismember(categoria, {'d_prohibida'})
+                    label_color = 'red';
+                elseif ismember(categoria, {'d_obligatoria', 'no_aparcar', 'zona_bici', 'zona_cotxe'})
+                    label_color = 'blue';
+                else
+                    label_color = 'white';
+                end
             end
             
-            % Afegir a Model 1 (Formes)
+            % Afegir a Model 1 (Formes) - TODAS las señales
             if ~isempty(desc_forma)
                 descriptors_forma = [descriptors_forma; desc_forma];
                 labels_forma = [labels_forma; label_forma];
             end
             
-            % Afegir a Model 2 (Colors)
-            if ~isempty(desc_color)
+            % Afegir a Model 2 (Colors) - EXCLUIR stop y vianant
+            if ~isempty(desc_color) && ~skip_color_model
                 descriptors_color = [descriptors_color; desc_color];
                 labels_color = [labels_color; label_color];
             end
             
-            % Afegir a Models 3-5 segons tipus
-            if ~isempty(desc_detall)
-                % Model 3: Circulars roges
-                if strcmp(label_color, 'red') && strcmp(label_forma, 'circular')
-                    descriptors_circ_rojo = [descriptors_circ_rojo; desc_detall];
-                    labels_circ_rojo = [labels_circ_rojo; categoria];
-                    
-                % Model 4: Circulars blaves
-                elseif strcmp(label_color, 'blue') && strcmp(label_forma, 'circular')
+            % Afegir a Models 3-4 segons tipus (solo circulares)
+            if ~isempty(desc_detall) && ~skip_color_model
+                % Model 3: Circulars blaves
+                if strcmp(label_color, 'blue') && strcmp(label_forma, 'circular')
                     descriptors_circ_azul = [descriptors_circ_azul; desc_detall];
                     labels_circ_azul = [labels_circ_azul; categoria];
                     
-                % Model 5: Circulars blanques
+                % Model 4: Circulars blanques
                 elseif strcmp(label_color, 'white') && strcmp(label_forma, 'circular')
                     descriptors_circ_blanco = [descriptors_circ_blanco; desc_detall];
                     labels_circ_blanco = [labels_circ_blanco; categoria];
@@ -167,7 +188,7 @@ for cat_idx = 1:length(categorias)
             end
             
         catch ME
-            fprintf('  Error en %s\n', archivos(img_idx).name);
+            fprintf('  Error en %s: %s\n', archivos(img_idx).name, ME.message);
         end
     end
 end
@@ -193,16 +214,7 @@ if ~isempty(descriptors_color)
         size(descriptors_color, 1), length(unique(labels_color)));
 end
 
-% Model 3: Circulars roges
-if ~isempty(descriptors_circ_rojo)
-    train_table_circ_rojo = array2table(descriptors_circ_rojo, 'VariableNames', descriptor_names_detall);
-    train_table_circ_rojo.Class = categorical(labels_circ_rojo);
-    save('data_model3_circ_rojo.mat', 'train_table_circ_rojo');
-    fprintf('Model 3 (Circulars roges): %d mostres, %d classes\n', ...
-        size(descriptors_circ_rojo, 1), length(unique(labels_circ_rojo)));
-end
-
-% Model 4: Circulars blaves
+% Model 3: Circulars blaves
 if ~isempty(descriptors_circ_azul)
     train_table_circ_azul = array2table(descriptors_circ_azul, 'VariableNames', descriptor_names_detall);
     train_table_circ_azul.Class = categorical(labels_circ_azul);
@@ -211,16 +223,11 @@ if ~isempty(descriptors_circ_azul)
         size(descriptors_circ_azul, 1), length(unique(labels_circ_azul)));
 end
 
-% Model 5: Circulars blanques
+% Model 4: Circulars blanques
 if ~isempty(descriptors_circ_blanco)
     train_table_circ_blanco = array2table(descriptors_circ_blanco, 'VariableNames', descriptor_names_detall);
     train_table_circ_blanco.Class = categorical(labels_circ_blanco);
-    save('data_model5_circ_blanco.mat', 'train_table_circ_blanco');
-    fprintf('Model 5 (Circulars blanques): %d mostres, %d classes\n', ...
+    save('data_model4_circ_blanco.mat', 'train_table_circ_blanco');
+    fprintf('Model 4 (Circulars blanques): %d mostres, %d classes\n', ...
         size(descriptors_circ_blanco, 1), length(unique(labels_circ_blanco)));
 end
-
-fprintf('\n✔ Taules guardades. Ara pots:\n');
-fprintf('1. Obrir Classification Learner\n');
-fprintf('2. Importar cada data_modelX.mat\n');
-fprintf('3. Entrenar 5 models separats\n');
