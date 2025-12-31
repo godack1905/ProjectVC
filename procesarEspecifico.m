@@ -3,8 +3,8 @@
 clear; clc; close all;
 
 train_path = 'imatges_senyals/test';
-categoria = 'zona_bici';
-nombre_archivo = '030_0074.png';
+categoria = 'stop';
+nombre_archivo = 'stop4.jpg';
 
 %% Cargar imagen
 img_path = fullfile(train_path, categoria, nombre_archivo);
