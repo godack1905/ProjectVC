@@ -48,6 +48,7 @@ descriptor_names = {
 
 total_processed = 0;
 total_errors = 0;
+total_discarded = 0; 
 
 for cat_idx = 1:length(categorias)
     categoria = categorias{cat_idx};
@@ -100,6 +101,13 @@ for cat_idx = 1:length(categorias)
             % Extreure descriptors
             desc = extractDescriptors(img);
             
+            % Verificar si TODOS los descriptores son exactamente cero
+            if all(desc == 0)
+                fprintf('Descriptors buits (error): %s\n', archivos(img_idx).name);
+                total_discarded = total_discarded + 1;
+                continue;
+            end
+
             % Verificar que los descriptores tengan la dimensión correcta
             if length(desc) == 25
                 % Afegir a les llistes
@@ -126,6 +134,8 @@ end
 fprintf('\n=== RESULTATS FINALS ===\n');
 fprintf('Total d''imatges processades correctament: %d\n', total_processed);
 fprintf('Total d''errors: %d\n', total_errors);
+fprintf('Total descartades (descriptors buits): %d\n', total_discarded);
+fprintf('Total real d''errors: %d\n', total_errors + total_discarded);
 
 if total_processed == 0
     fprintf('ERROR: No s''ha processat cap imatge\n');

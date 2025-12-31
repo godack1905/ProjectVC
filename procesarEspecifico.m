@@ -2,9 +2,9 @@
 % Separa detección por color: Rojo, Azul, Amarillo
 clear; clc; close all;
 
-train_path = 'imatges_senyals/train';
-categoria = 'stop';
-nombre_archivo = 'road59.png';
+train_path = 'imatges_senyals/test';
+categoria = 'zona_bici';
+nombre_archivo = '030_0074.png';
 
 %% Cargar imagen
 img_path = fullfile(train_path, categoria, nombre_archivo);
@@ -91,7 +91,7 @@ circle_mask_blue = false(rows, cols);
 triangle_mask_yellow = false(rows, cols);
 octagon_mask_red = false(rows, cols);
 % ═══════════════════════════════════════════════════════════
-% A) CÍRCULOS ROJOS (Stop completo + Prohibición con borde) - DOBLE ESTRATEGIA
+% A) CÍRCULOS ROJOS (Stop completo + Prohibición con borde)
 % ═══════════════════════════════════════════════════════════
 fprintf('\n=== DETECCIÓN DE CÍRCULOS ROJOS ===\n');
 
@@ -99,9 +99,6 @@ radio_min = 15;
 radio_max = round(min(rows, cols) / 2);
 
 if sum(red_mask(:)) > 300
-    % ───────────────────────────────────────────────────────
-    % ESTRATEGIA 1: Método mejorado (igual que azules)
-    % ───────────────────────────────────────────────────────
     fprintf('Intentando método mejorado (perímetro)...\n');
     
     red_mask_clean = imclose(red_mask, strel('disk', 5));
@@ -109,97 +106,52 @@ if sum(red_mask(:)) > 300
     red_mask_clean = bwareaopen(red_mask_clean, 300);
     
     CC = bwconncomp(red_mask_clean);
-    numPixels = cellfun(@numel, CC.PixelIdxList);
-    [~, idx_largest] = max(numPixels);
     
-    red_mask_largest = false(rows, cols);
-    red_mask_largest(CC.PixelIdxList{idx_largest}) = true;
-    
-    red_boundary = bwperim(red_mask_largest);
-    red_boundary = imdilate(red_boundary, strel('disk', 3));
-    
-    img_red_edge = img_enhanced;
-    img_red_edge(~red_boundary) = 255;
-    
-    [centers, radii, metric] = imfindcircles(img_red_edge, [radio_min radio_max], ...
-        'ObjectPolarity', 'dark', ...
-        'Sensitivity', 0.97, ...
-        'EdgeThreshold', 0.02, ...
-        'Method', 'TwoStage');
-    
-    all_centers = centers;
-    all_radii = radii;
-    
-    if ~isempty(centers)
-        % Éxito con método mejorado
-        fprintf('✓ Método mejorado: %d círculos encontrados\n', length(radii));
-        
-        [max_radio, best_idx] = max(radii);
-        fprintf('  Círculo rojo seleccionado: Radio=%.1f (el más grande)\n', max_radio);
-        
-        centers = centers(best_idx, :);
-        radii = radii(best_idx);
-        num_circles_red = 1;
-        
-        [xx, yy] = meshgrid(1:cols, 1:rows);
-        circle_temp = ((xx - centers(1)).^2 + (yy - centers(2)).^2) <= (radii*1.02)^2;
-        circle_mask_red = circle_temp;
+    % **VERIFICACIÓN: ¿Hay componentes conectados?**
+    if CC.NumObjects == 0
+        fprintf('⚠ No hay componentes conectados después de limpiar la máscara roja\n');
         
     else
-        % ───────────────────────────────────────────────────────
-        % ESTRATEGIA 2: Método tradicional (fallback)
-        % ───────────────────────────────────────────────────────
-        fprintf('⚠ Método mejorado no detectó círculos, usando método tradicional...\n');
+        % Continúa con el método mejorado
+        numPixels = cellfun(@numel, CC.PixelIdxList);
+        [~, idx_largest] = max(numPixels);
         
-        [centers, radii, metric] = imfindcircles(img_enhanced, [radio_min radio_max], ...
-            'ObjectPolarity', 'dark', 'Sensitivity', 0.93, 'EdgeThreshold', 0.08);
+        red_mask_largest = false(rows, cols);
+        red_mask_largest(CC.PixelIdxList{idx_largest}) = true;
+        
+        red_boundary = bwperim(red_mask_largest);
+        red_boundary = imdilate(red_boundary, strel('disk', 3));
+        
+        img_red_edge = img_enhanced;
+        img_red_edge(~red_boundary) = 255;
+        
+        [centers, radii, metric] = imfindcircles(img_red_edge, [radio_min radio_max], ...
+            'ObjectPolarity', 'dark', ...
+            'Sensitivity', 0.97, ...
+            'EdgeThreshold', 0.02, ...
+            'Method', 'TwoStage');
         
         all_centers = centers;
         all_radii = radii;
         
         if ~isempty(centers)
-            fprintf('✓ Método tradicional: %d círculos encontrados\n', length(radii));
+            % Éxito con método mejorado
+            fprintf('✓ Método mejorado: %d círculos encontrados\n', length(radii));
             
-            % Filtrar círculos con scoring
-            if length(radii) > 1
-                center_img = [cols/2, rows/2];
-                circle_scores = zeros(length(radii), 1);
-                
-                for i = 1:length(radii)
-                    [xx, yy] = meshgrid(1:cols, 1:rows);
-                    circle_temp = ((xx - centers(i,1)).^2 + (yy - centers(i,2)).^2) <= radii(i)^2;
-                    
-                    dist_to_center = norm([centers(i,1), centers(i,2)] - center_img);
-                    max_dist = norm(center_img);
-                    centrality = 1 - (dist_to_center / max_dist);
-                    
-                    color_overlap = sum(red_mask(:) & circle_temp(:)) / sum(circle_temp(:));
-                    
-                    circle_scores(i) = metric(i) * 0.3 + ...
-                                      (radii(i)/radio_max) * 0.2 + ...
-                                      centrality * 0.2 + ...
-                                      color_overlap * 0.3;
-                    
-                    fprintf('  Círculo %d: Radio=%.1f, ColorOverlap=%.2f, Score=%.3f\n', ...
-                        i, radii(i), color_overlap, circle_scores(i));
-                end
-                
-                [~, best_idx] = max(circle_scores);
-                fprintf('✓ Seleccionado círculo rojo #%d\n', best_idx);
-                
-                centers = centers(best_idx, :);
-                radii = radii(best_idx);
-            end
+            [max_radio, best_idx] = max(radii);
+            fprintf('  Círculo rojo seleccionado: Radio=%.1f (el más grande)\n', max_radio);
             
-            num_circles_red = length(radii);
+            centers = centers(best_idx, :);
+            radii = radii(best_idx);
+            num_circles_red = 1;
             
-            for i = 1:num_circles_red
-                [xx, yy] = meshgrid(1:cols, 1:rows);
-                circle_temp = ((xx - centers(i,1)).^2 + (yy - centers(i,2)).^2) <= (radii(i)*1.02)^2;
-                circle_mask_red = circle_mask_red | circle_temp;
-            end
+            [xx, yy] = meshgrid(1:cols, 1:rows);
+            circle_temp = ((xx - centers(1)).^2 + (yy - centers(2)).^2) <= (radii*1.02)^2;
+            circle_mask_red = circle_temp;
+            
         else
-            fprintf('✗ No se detectaron círculos rojos con ningún método\n');
+            % Método mejorado no encontró círculos
+            fprintf('⚠ Método mejorado no detectó círculos rojos\n');
         end
     end
 end
@@ -216,6 +168,131 @@ if num_circles_red > 0
     title(sprintf('7. Círculos ROJOS: %d', num_circles_red));
 else
     imshow(img), title('7. Círculos ROJOS: 0');
+end
+
+% ═══════════════════════════════════════════════════════════
+% B) CÍRCULOS AZULES (Obligación) - MEJORADO
+% ═══════════════════════════════════════════════════════════
+fprintf('\n=== DETECCIÓN DE CÍRCULOS AZULES ===\n');
+
+if sum(blue_mask(:)) > 300
+    % PASO 1: Limpiar y obtener región más grande
+    blue_mask_clean = imclose(blue_mask, strel('disk', 5));
+    blue_mask_clean = imfill(blue_mask_clean, 'holes');
+    blue_mask_clean = bwareaopen(blue_mask_clean, 300);
+    
+    CC = bwconncomp(blue_mask_clean);
+    numPixels = cellfun(@numel, CC.PixelIdxList);
+    [~, idx_largest] = max(numPixels);
+    
+    blue_mask_largest = false(rows, cols);
+    blue_mask_largest(CC.PixelIdxList{idx_largest}) = true;
+    
+    % PASO 2: Obtener el BORDE de la región más grande
+    blue_boundary = bwperim(blue_mask_largest);
+    blue_boundary = imdilate(blue_boundary, strel('disk', 3)); % Engrosar más
+    
+    % PASO 3: Aplicar a imagen
+    img_blue_edge = img_enhanced;
+    img_blue_edge(~blue_boundary) = 255; % Fondo blanco
+    
+    radio_min = 20; % Menos restrictivo
+    
+    [centers_blue, radii_blue, metric_blue] = imfindcircles(img_blue_edge, [radio_min radio_max], ...
+        'ObjectPolarity', 'dark', ...
+        'Sensitivity', 0.97, ...      % ↑ Más sensible
+        'EdgeThreshold', 0.02, ...    % ↓ Menos restrictivo
+        'Method', 'TwoStage');        % Más robusto
+    
+    if ~isempty(centers_blue)
+        fprintf('Círculos azules encontrados: %d\n', length(radii_blue));
+        
+        % Filtrar: tomar solo el MÁS GRANDE
+        [max_radio, idx_best] = max(radii_blue);
+        
+        fprintf('  ✓ Círculo azul seleccionado: Radio=%.1f (el más grande)\n', max_radio);
+        
+        centers_blue = centers_blue(idx_best, :);
+        radii_blue = radii_blue(idx_best);
+        
+        num_circles_blue = 1;
+        [xx, yy] = meshgrid(1:cols, 1:rows);
+        circle_temp = ((xx - centers_blue(1)).^2 + (yy - centers_blue(2)).^2) <= (radii_blue*1.02)^2;
+        circle_mask_blue = circle_temp;
+    else
+        fprintf('  ✗ No se detectaron círculos azules\n');
+    end
+end
+
+subplot(3,5,8);
+if num_circles_blue > 0
+    imshow(img);
+    viscircles(centers_blue(1,:), radii_blue(1), 'Color', 'b', 'LineWidth', 2);
+    title(sprintf('8. Círculos AZULES: %d', num_circles_blue));
+else
+    imshow(img), title('8. Círculos AZULES: 0');
+end
+
+% ═══════════════════════════════════════════════════════════
+% C) BÚSQUEDA DE RESPALDO: Círculos en imagen original
+%    (Solo si no se encontraron círculos rojos ni azules)
+% ═══════════════════════════════════════════════════════════
+if num_circles_red == 0 && num_circles_blue == 0
+    fprintf('\n=== BÚSQUEDA DE RESPALDO: CÍRCULOS EN IMAGEN ORIGINAL ===\n');
+    
+    [centers, radii, metric] = imfindcircles(img_enhanced, [radio_min radio_max], ...
+        'ObjectPolarity', 'dark', 'Sensitivity', 0.93, 'EdgeThreshold', 0.08);
+    
+    if ~isempty(centers)
+        fprintf('✓ Círculos encontrados en imagen original: %d\n', length(radii));
+        
+        % Filtrar círculos con scoring
+        if length(radii) > 1
+            center_img = [cols/2, rows/2];
+            circle_scores = zeros(length(radii), 1);
+            
+            for i = 1:length(radii)
+                [xx, yy] = meshgrid(1:cols, 1:rows);
+                circle_temp = ((xx - centers(i,1)).^2 + (yy - centers(i,2)).^2) <= radii(i)^2;
+                
+                dist_to_center = norm([centers(i,1), centers(i,2)] - center_img);
+                max_dist = norm(center_img);
+                centrality = 1 - (dist_to_center / max_dist);
+                
+                color_overlap = sum(red_mask(:) & circle_temp(:)) / sum(circle_temp(:));
+                
+                circle_scores(i) = metric(i) * 0.3 + ...
+                                  (radii(i)/radio_max) * 0.2 + ...
+                                  centrality * 0.2 + ...
+                                  color_overlap * 0.3;
+                
+                fprintf('  Círculo %d: Radio=%.1f, ColorOverlap=%.2f, Score=%.3f\n', ...
+                    i, radii(i), color_overlap, circle_scores(i));
+            end
+            
+            [~, best_idx] = max(circle_scores);
+            fprintf('✓ Seleccionado círculo #%d (respaldo)\n', best_idx);
+            
+            centers = centers(best_idx, :);
+            radii = radii(best_idx);
+        end
+        
+        num_circles_red = length(radii);
+        
+        for i = 1:num_circles_red
+            [xx, yy] = meshgrid(1:cols, 1:rows);
+            circle_temp = ((xx - centers(i,1)).^2 + (yy - centers(i,2)).^2) <= (radii(i)*1.02)^2;
+            circle_mask_red = circle_mask_red | circle_temp;
+        end
+        
+        % Actualizar visualización del subplot 7
+        subplot(3,5,7);
+        imshow(img);
+        viscircles(centers, radii, 'Color', 'm', 'LineWidth', 2); % Magenta para indicar respaldo
+        title(sprintf('7. Círculos ROJOS: %d (respaldo)', num_circles_red));
+    else
+        fprintf('✗ No se detectaron círculos con búsqueda de respaldo\n');
+    end
 end
 
 % ═══════════════════════════════════════════════════════════
