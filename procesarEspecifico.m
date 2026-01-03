@@ -2,9 +2,9 @@
 % Separa detección por color: Rojo, Azul, Amarillo
 clear; clc; close all;
 
-train_path = 'imatges_senyals/test';
-categoria = 'stop';
-nombre_archivo = 'stop4.jpg';
+train_path = 'imatges_senyals/train';
+categoria = 'zona_bici';
+nombre_archivo = '030_0073.png';
 
 %% Cargar imagen
 img_path = fullfile(train_path, categoria, nombre_archivo);
@@ -200,8 +200,8 @@ if sum(blue_mask(:)) > 300
     
     [centers_blue, radii_blue, metric_blue] = imfindcircles(img_blue_edge, [radio_min radio_max], ...
         'ObjectPolarity', 'dark', ...
-        'Sensitivity', 0.97, ...      % ↑ Más sensible
-        'EdgeThreshold', 0.02, ...    % ↓ Menos restrictivo
+        'Sensitivity', 0.9, ...      % ↑ Más sensible
+        'EdgeThreshold', 0.08, ...    % ↓ Menos restrictivo
         'Method', 'TwoStage');        % Más robusto
     
     if ~isempty(centers_blue)
@@ -295,68 +295,7 @@ if num_circles_red == 0 && num_circles_blue == 0
     end
 end
 
-% ═══════════════════════════════════════════════════════════
-% B) CÍRCULOS AZULES (Obligación) - MEJORADO
-% ═══════════════════════════════════════════════════════════
-fprintf('\n=== DETECCIÓN DE CÍRCULOS AZULES ===\n');
 
-if sum(blue_mask(:)) > 300
-    % PASO 1: Limpiar y obtener región más grande
-    blue_mask_clean = imclose(blue_mask, strel('disk', 5));
-    blue_mask_clean = imfill(blue_mask_clean, 'holes');
-    blue_mask_clean = bwareaopen(blue_mask_clean, 300);
-    
-    CC = bwconncomp(blue_mask_clean);
-    numPixels = cellfun(@numel, CC.PixelIdxList);
-    [~, idx_largest] = max(numPixels);
-    
-    blue_mask_largest = false(rows, cols);
-    blue_mask_largest(CC.PixelIdxList{idx_largest}) = true;
-    
-    % PASO 2: Obtener el BORDE de la región más grande
-    blue_boundary = bwperim(blue_mask_largest);
-    blue_boundary = imdilate(blue_boundary, strel('disk', 3)); % Engrosar más
-    
-    % PASO 3: Aplicar a imagen
-    img_blue_edge = img_enhanced;
-    img_blue_edge(~blue_boundary) = 255; % Fondo blanco
-    
-    radio_min = 20; % Menos restrictivo
-    
-    [centers_blue, radii_blue, metric_blue] = imfindcircles(img_blue_edge, [radio_min radio_max], ...
-        'ObjectPolarity', 'dark', ...
-        'Sensitivity', 0.97, ...      % ↑ Más sensible
-        'EdgeThreshold', 0.02, ...    % ↓ Menos restrictivo
-        'Method', 'TwoStage');        % Más robusto
-    
-    if ~isempty(centers_blue)
-        fprintf('Círculos azules encontrados: %d\n', length(radii_blue));
-        
-        % Filtrar: tomar solo el MÁS GRANDE
-        [max_radio, idx_best] = max(radii_blue);
-        
-        fprintf('  ✓ Círculo azul seleccionado: Radio=%.1f (el más grande)\n', max_radio);
-        
-        centers_blue = centers_blue(idx_best, :);
-        radii_blue = radii_blue(idx_best);
-        
-        num_circles_blue = 1;
-        [xx, yy] = meshgrid(1:cols, 1:rows);
-        circle_temp = ((xx - centers_blue(1)).^2 + (yy - centers_blue(2)).^2) <= (radii_blue*1.02)^2;
-        circle_mask_blue = circle_temp;
-    else
-        fprintf('  ✗ No se detectaron círculos azules\n');
-    end
-end
-
-subplot(3,5,8);
-if num_circles_blue > 0
-    imshow(img);
-    viscircles(centers_blue(1,:), radii_blue(1), 'Color', 'b', 'LineWidth', 2);
-    title(sprintf('8. Círculos AZULES: %d', num_circles_blue));
-else
-    imshow(img), title('8. Círculos AZULES: 0');
-end
 % ═══════════════════════════════════════════════════════════
 % C) TRIÁNGULOS AMARILLOS (Advertencia) - DETECCIÓN MEJORADA
 % ═══════════════════════════════════════════════════════════
@@ -793,7 +732,7 @@ if num_octagons_red > 0
             normalized_dist = dist_center / norm(center_img);
             
             score = stats(1).Area * stats(1).Solidity * stats(1).Extent * (1.5 - normalized_dist*0.3);
-            score = score * 1.5; % Bonus por ser octógono
+            score = score * 1.6; % Bonus por ser octógono
             
             detecciones{end+1} = struct('mask', mask_temp, 'tipo', 'STOP (Octógono Rojo)', ...
                 'score', score, 'area', stats(1).Area, 'stats', stats(1));
