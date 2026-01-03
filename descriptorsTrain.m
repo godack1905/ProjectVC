@@ -63,13 +63,10 @@ for cat_idx = 1:length(categorias)
     fprintf('Processant categoria: %s\n', categoria);
     
     % Llistar imatges
-    archivos = dir(fullfile(carpeta, '*.png'));
-    if isempty(archivos)
-        archivos = dir(fullfile(carpeta, '*.jpg'));
-    end
-    if isempty(archivos)
-        archivos = dir(fullfile(carpeta, '*.jpeg'));
-    end
+    archivos_png = dir(fullfile(carpeta, '*.png'));
+    archivos_jpg = dir(fullfile(carpeta, '*.jpg'));
+    archivos_jpeg = dir(fullfile(carpeta, '*.jpeg'));
+    archivos = [archivos_png; archivos_jpg; archivos_jpeg];
     
     if isempty(archivos)
         fprintf('  No s''han trovat imatges en %s\n', carpeta);
@@ -77,7 +74,6 @@ for cat_idx = 1:length(categorias)
     end
     
     fprintf('  Trovades %d imatges\n', length(archivos));
-    
     processed_in_cat = 0;
     
     for img_idx = 1:length(archivos)

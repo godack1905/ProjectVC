@@ -1,6 +1,6 @@
 %% PRÀCTICA VC - RECONEIXEMENT DE SENYALS DE TRÀNSIT
 % Testing amb totes les imatges d'una carpeta
-
+clear; clc; close all;
 % Noms dels descriptors
 descriptor_names = {
     'PctRed', 'PctBlue', 'PctYellow', ...
