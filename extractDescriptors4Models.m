@@ -3,7 +3,7 @@
 
 function [desc_forma, desc_color, desc_detall] = extractDescriptors4Models(img)
     
-    desc_forma = zeros(1, 17);  % 17 descriptors de forma
+    desc_forma = zeros(1, 16);  % 16 descriptors de forma
     desc_color = zeros(1, 15);  % 15 descriptors de color
     desc_detall = zeros(1, 30); % 30 descriptors de detall
     
@@ -178,15 +178,13 @@ function [desc_forma, desc_color, desc_detall] = extractDescriptors4Models(img)
                         equiv_diameter = 0;
                     end
                     
-                    % Octagonalitat
-                    octagonality = computeOctagonality(combi);
                     
-                    % Descriptors de forma (17 en total)
+                    % Descriptors de forma (16 en total)
                     desc_forma = [circularity, eccentricity, solidity, extent, ...
                                   aspect_ratio, axis_ratio, compactness, form_factor, ...
                                   num_vertices, fourier_desc(1), fourier_desc(2), ...
                                   fourier_desc(3), perimeter, area, rectangularity, ...
-                                  equiv_diameter, octagonality];
+                                  equiv_diameter];
                     
                     % Asegurar que no hi ha NaN o Inf
                     desc_forma(isnan(desc_forma)) = 0;
@@ -194,7 +192,7 @@ function [desc_forma, desc_color, desc_detall] = extractDescriptors4Models(img)
                 end
             catch ME
                 % Si n'hi ha error, ficar-hi zeros
-                desc_forma = zeros(1, 17);
+                desc_forma = zeros(1, 16);
             end
         end
         
@@ -355,7 +353,7 @@ function [desc_forma, desc_color, desc_detall] = extractDescriptors4Models(img)
     catch ME
         fprintf('Error en extractDescriptors4Models: %s\n', ME.message);
         % Retornem zeros en cas d'error
-        desc_forma = zeros(1, 17);
+        desc_forma = zeros(1, 16);
         desc_color = zeros(1, 15);
         desc_detall = zeros(1, 30);
     end

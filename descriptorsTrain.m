@@ -48,8 +48,7 @@ descriptor_names_forma = {
     'Circularity', 'Eccentricity', 'Solidity', 'Extent', ...
     'AspectRatio', 'AxisRatio', 'Compactness', 'FormFactor', ...
     'NumVertices', 'Fourier1', 'Fourier2', 'Fourier3', ...
-    'Perimeter', 'Area', 'Rectangularity', 'EquivDiameter', ...
-    'Octagonality'
+    'Perimeter', 'Area', 'Rectangularity', 'EquivDiameter'
 };
 
 descriptor_names_color = {
@@ -110,7 +109,7 @@ for cat_idx = 1:length(categorias)
             % Extreure descriptors jeràrquics
             [desc_forma, desc_color, desc_detall] = extractDescriptors4Models(img);
             
-            if length(desc_forma) ~= 17
+            if length(desc_forma) ~= 16
                 fprintf('  Advertencia: desc_forma tamaño incorrecto en %s (%d)\n', ...
                     archivos(img_idx).name, length(desc_forma));
                 continue; 
