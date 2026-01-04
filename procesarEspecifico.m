@@ -2,9 +2,9 @@
 % Separa detección por color: Rojo, Azul, Amarillo
 clear; clc; close all;
 
-train_path = 'imatges_senyals/train';
-categoria = 'zona_bici';
-nombre_archivo = '030_0073.png';
+train_path = 'imatges_senyals/test';
+categoria = 'stop';
+nombre_archivo = 'philadelphia1_jpg.rf.230cbef0708699a08e74bc09fda2eb9b.jpg';
 
 %% Cargar imagen
 img_path = fullfile(train_path, categoria, nombre_archivo);
@@ -127,8 +127,8 @@ if sum(red_mask(:)) > 300
         
         [centers, radii, metric] = imfindcircles(img_red_edge, [radio_min radio_max], ...
             'ObjectPolarity', 'dark', ...
-            'Sensitivity', 0.97, ...
-            'EdgeThreshold', 0.02, ...
+            'Sensitivity', 0.9, ...
+            'EdgeThreshold', 0.06, ...
             'Method', 'TwoStage');
         
         all_centers = centers;
@@ -200,7 +200,7 @@ if sum(blue_mask(:)) > 300
     
     [centers_blue, radii_blue, metric_blue] = imfindcircles(img_blue_edge, [radio_min radio_max], ...
         'ObjectPolarity', 'dark', ...
-        'Sensitivity', 0.9, ...      % ↑ Más sensible
+        'Sensitivity', 0.85, ...      % ↑ Más sensible
         'EdgeThreshold', 0.08, ...    % ↓ Menos restrictivo
         'Method', 'TwoStage');        % Más robusto
     
@@ -237,11 +237,16 @@ end
 % C) BÚSQUEDA DE RESPALDO: Círculos en imagen original
 %    (Solo si no se encontraron círculos rojos ni azules)
 % ═══════════════════════════════════════════════════════════
-if num_circles_red == 0 && num_circles_blue == 0
+if num_circles_red == 0 && num_circles_blue == 0;
     fprintf('\n=== BÚSQUEDA DE RESPALDO: CÍRCULOS EN IMAGEN ORIGINAL ===\n');
-    
+
+    radio_min = 25;
+
     [centers, radii, metric] = imfindcircles(img_enhanced, [radio_min radio_max], ...
-        'ObjectPolarity', 'dark', 'Sensitivity', 0.93, 'EdgeThreshold', 0.08);
+            'ObjectPolarity', 'dark', ...
+            'Sensitivity', 0.93, ...
+            'EdgeThreshold', 0.04, ...
+            'Method', 'TwoStage');
     
     if ~isempty(centers)
         fprintf('✓ Círculos encontrados en imagen original: %d\n', length(radii));
@@ -297,14 +302,14 @@ end
 
 
 % ═══════════════════════════════════════════════════════════
-% C) TRIÁNGULOS AMARILLOS (Advertencia) - DETECCIÓN MEJORADA
+% C) TRIÁNGULOS AMARILLOS (Advertencia) - DETECCIÓN OPTIMIZADA
 % ═══════════════════════════════════════════════════════════
-fprintf('\n=== DETECCIÓN DE TRIÁNGULOS AMARILLOS ===\n');
+fprintf('\n=== DETECCIÓN DE TRIÁNGULOS AMARILLOS (OPTIMIZADA) ===\n');
 
 if sum(yellow_mask(:)) > 300
     % PASO 1: Limpieza agresiva para cerrar huecos del símbolo interno
-    yellow_mask_clean = imclose(yellow_mask, strel('disk', 4)); % Aumentado de 4 a 8
-    yellow_mask_clean = imfill(yellow_mask_clean, 'holes'); % Rellenar TODO
+    yellow_mask_clean = imclose(yellow_mask, strel('disk', 4));
+    yellow_mask_clean = imfill(yellow_mask_clean, 'holes');
     
     % PASO 2: Dilatación adicional para unir fragmentos del borde
     yellow_mask_dilated = imdilate(yellow_mask_clean, strel('disk', 3));
@@ -315,7 +320,7 @@ if sum(yellow_mask(:)) > 300
     yellow_mask_final = bwareaopen(yellow_mask_final, 300);
     
     % También usar edges pero con máscara amarilla dilatada
-    yellow_mask_edges = imdilate(yellow_mask, strel('disk', 3)); % Más amplio
+    yellow_mask_edges = imdilate(yellow_mask, strel('disk', 3));
     edges_yellow = edges_all & yellow_mask_edges;
     
     % Combinar edges cerrados
@@ -327,23 +332,47 @@ if sum(yellow_mask(:)) > 300
     CC_mask = bwconncomp(yellow_mask_final);
     CC_edges = bwconncomp(edges_yellow_clean);
     
-    fprintf('Candidatos desde máscara amarilla: %d\n', CC_mask.NumObjects);
-    fprintf('Candidatos desde edges amarillos: %d\n', CC_edges.NumObjects);
+    fprintf('Candidatos iniciales: máscara=%d, edges=%d (total: %d)\n', ...
+        CC_mask.NumObjects, CC_edges.NumObjects, ...
+        CC_mask.NumObjects + CC_edges.NumObjects);
     
-    % Combinar todas las regiones candidatas
+    % ═════════════════════════════════════════════════════════
+    % FILTRADO SIMPLE: Analizar solo las 10 regiones más grandes
+    % ═════════════════════════════════════════════════════════
     all_yellow_regions = {};
+    all_areas = [];
+    
+    % Recopilar todas las regiones con sus áreas
     for k = 1:CC_mask.NumObjects
         mask_region = false(rows, cols);
         mask_region(CC_mask.PixelIdxList{k}) = true;
+        area = sum(mask_region(:));
+        
         all_yellow_regions{end+1} = mask_region;
+        all_areas(end+1) = area;
     end
+    
     for k = 1:CC_edges.NumObjects
         mask_region = false(rows, cols);
         mask_region(CC_edges.PixelIdxList{k}) = true;
+        area = sum(mask_region(:));
+        
         all_yellow_regions{end+1} = mask_region;
+        all_areas(end+1) = area;
     end
     
-    % Analizar cada región candidata
+    % Ordenar por área (de mayor a menor) y tomar las 10 más grandes
+    [~, idx_sorted] = sort(all_areas, 'descend');
+    num_to_process = min(10, length(all_yellow_regions));
+    all_yellow_regions = all_yellow_regions(idx_sorted(1:num_to_process));
+    
+    fprintf('✓ Procesando las %d regiones más grandes (reducción: %.1f%%)\n', ...
+        num_to_process, ...
+        100 * (1 - num_to_process/length(idx_sorted)));
+    
+    % ═════════════════════════════════════════════════════════
+    % PROCESAMIENTO DETALLADO (solo de candidatos filtrados)
+    % ═════════════════════════════════════════════════════════
     for idx = 1:length(all_yellow_regions)
         mask_region = all_yellow_regions{idx};
         
@@ -380,41 +409,38 @@ if sum(yellow_mask(:)) > 300
         % Verificar overlap con máscara amarilla original
         overlap_yellow = sum(yellow_mask(:) & mask_region(:)) / area;
         
-        if overlap_yellow < 0.3 % Debe tener algo de amarillo
+        if overlap_yellow < 0.3
             continue;
         end
         
         % ═══════════════════════════════════════════════════════════
-        % DETECCIÓN DE TRIÁNGULOS: Métodos robustos
+        % DETECCIÓN DE TRIÁNGULOS: Métodos optimizados
         % ═══════════════════════════════════════════════════════════
         is_triangle = false;
         detection_method = '';
         
-        % MÉTODO 1: Análisis del contorno EXTERNO (ignorando huecos internos)
-        % Este es el método más robusto para triángulos con símbolos dentro
+        % MÉTODO 1: Análisis del contorno EXTERNO (OPTIMIZADO)
         boundaries = bwboundaries(mask_region);
         
         if ~isempty(boundaries)
-            % Tomar solo el contorno externo (el primero es siempre el más grande)
             boundary = boundaries{1};
             
-            % Probar múltiples tolerancias para simplificación
-            for tolerance = [0.005, 0.008, 0.01, 0.012, 0.015, 0.018, 0.02, 0.025, 0.03, 0.035, 0.04, 0.045]
+            % OPTIMIZACIÓN: Menos tolerancias (solo las críticas)
+            for tolerance = [0.01, 0.02, 0.03, 0.04]
                 simplified = reducepoly(boundary, tolerance);
                 num_vertices = size(simplified, 1);
                 
-                % Triángulos: 3-7 vértices (muy permisivo para compensar irregularidades)
+                % Triángulos: 3-7 vértices
                 if num_vertices >= 3 && num_vertices <= 7
                     % Criterios RELAJADOS para triángulos amarillos
-                    ff_ok = (form_factor >= 0.30 && form_factor <= 0.78);  % Más permisivo
-                    sol_ok = (solidity >= 0.65);  % Más permisivo
-                    conv_ok = (convexity >= 0.65); % Más permisivo
-                    asp_ok = (aspect_ratio >= 0.55 && aspect_ratio <= 1.60); % Más rango
-                    ext_ok = (extent >= 0.35); % Más permisivo
+                    ff_ok = (form_factor >= 0.30 && form_factor <= 0.78);
+                    sol_ok = (solidity >= 0.65);
+                    conv_ok = (convexity >= 0.65);
+                    asp_ok = (aspect_ratio >= 0.55 && aspect_ratio <= 1.60);
+                    ext_ok = (extent >= 0.35);
                     
                     score = ff_ok + sol_ok + conv_ok + asp_ok + ext_ok;
                     
-                    % Con 3 de 5 criterios es suficiente
                     if score >= 3
                         is_triangle = true;
                         detection_method = sprintf('Contorno(%d vértices, t=%.3f)', num_vertices, tolerance);
@@ -424,22 +450,20 @@ if sum(yellow_mask(:)) > 300
             end
         end
         
-        % MÉTODO 2: Análisis del casco convexo (forma exterior ideal)
+        % MÉTODO 2: Análisis del casco convexo
         if ~is_triangle
-            % Obtener el casco convexo de la región
             [B_y, B_x] = find(mask_region);
             if length(B_x) > 10
                 try
                     k = convhull(B_x, B_y);
                     convex_boundary = [B_x(k), B_y(k)];
                     
-                    % Simplificar el casco convexo
-                    for tolerance = [0.01, 0.015, 0.02, 0.025, 0.03]
+                    % OPTIMIZACIÓN: Menos tolerancias
+                    for tolerance = [0.015, 0.025]
                         simplified_convex = reducepoly(convex_boundary, tolerance);
                         num_vertices_convex = size(simplified_convex, 1);
                         
                         if num_vertices_convex >= 3 && num_vertices_convex <= 6
-                            % El casco convexo tiene forma triangular
                             if form_factor >= 0.30 && solidity >= 0.60 && convexity >= 0.60
                                 is_triangle = true;
                                 detection_method = sprintf('CascoConvexo(%d vértices)', num_vertices_convex);
@@ -455,12 +479,10 @@ if sum(yellow_mask(:)) > 300
         
         % MÉTODO 3: Detección por esquinas en el perímetro
         if ~is_triangle && area > 400
-            % Aplicar detección de esquinas sobre la máscara
             mask_uint8 = uint8(mask_region) * 255;
             corners = detectHarrisFeatures(mask_uint8, 'MinQuality', 0.01);
             
             if corners.Count >= 3 && corners.Count <= 9
-                % Filtrar esquinas que estén cerca del perímetro
                 boundary_mask = bwperim(mask_region);
                 boundary_dilated = imdilate(boundary_mask, strel('disk', 5));
                 
@@ -475,7 +497,6 @@ if sum(yellow_mask(:)) > 300
                     end
                 end
                 
-                % Si hay 3-5 esquinas en el perímetro, probablemente es un triángulo
                 if corners_on_boundary >= 3 && corners_on_boundary <= 6
                     if form_factor >= 0.28 && solidity >= 0.60 && convexity >= 0.60
                         is_triangle = true;
@@ -485,13 +506,8 @@ if sum(yellow_mask(:)) > 300
             end
         end
         
-        % MÉTODO 4: Criterios geométricos puros (forma general triangular)
+        % MÉTODO 4: Criterios geométricos puros
         if ~is_triangle
-            % Un triángulo tiene características específicas:
-            % - Form factor entre 0.3-0.7 (más bajo que círculo)
-            % - Solidez moderada (0.65-0.92)
-            % - Excentricidad no muy alta (no es una línea)
-            
             eccentricity = stats(1).Eccentricity;
             
             is_triangular_shape = (form_factor >= 0.32 && form_factor <= 0.72) && ...
@@ -520,13 +536,6 @@ if sum(yellow_mask(:)) > 300
             fprintf('    - Aspect Ratio: %.2f\n', aspect_ratio);
             fprintf('    - Extent: %.3f\n', extent);
             fprintf('    - Overlap amarillo: %.2f%%\n', overlap_yellow*100);
-        elseif area > 500 && overlap_yellow > 0.4
-            % Debug: mostrar por qué no se detectó
-            fprintf('  ✗ Región amarilla #%d NO clasificada:\n', idx);
-            fprintf('    - Área=%d, FF=%.3f, Sol=%.3f, Conv=%.3f\n', ...
-                area, form_factor, solidity, convexity);
-            fprintf('    - Aspect=%.2f, Extent=%.3f, Overlap=%.2f%%\n', ...
-                aspect_ratio, extent, overlap_yellow*100);
         end
     end
     
@@ -536,15 +545,15 @@ end
 subplot(3,5,9), imshow(triangle_mask_yellow), title(sprintf('9. Triángulos AMARILLOS: %d', num_triangles_yellow));
 
 % ═══════════════════════════════════════════════════════════
-% D) OCTÓGONOS ROJOS (Stop) - DETECCIÓN MEJORADA
+% D) OCTÓGONOS ROJOS (Stop) - DETECCIÓN OPTIMIZADA
 % ═══════════════════════════════════════════════════════════
-fprintf('\n=== DETECCIÓN DE OCTÓGONOS ROJOS ===\n');
+fprintf('\n=== DETECCIÓN DE OCTÓGONOS ROJOS (OPTIMIZADA) ===\n');
 
 if sum(red_mask(:)) > 500
     % ESTRATEGIA DUAL: Usar máscara roja limpia Y edges
     
     % Método A: Desde máscara roja con limpieza mínima
-    red_mask_clean = imclose(red_mask, strel('disk', 2)); % Mínimo suavizado
+    red_mask_clean = imclose(red_mask, strel('disk', 2));
     red_mask_clean = imfill(red_mask_clean, 'holes');
     red_mask_clean = bwareaopen(red_mask_clean, 300);
     
@@ -559,22 +568,47 @@ if sum(red_mask(:)) > 500
     CC_red_mask = bwconncomp(red_mask_clean);
     CC_red_edges = bwconncomp(edges_red_clean);
     
-    fprintf('Candidatos desde máscara roja: %d\n', CC_red_mask.NumObjects);
-    fprintf('Candidatos desde edges rojos: %d\n', CC_red_edges.NumObjects);
+    fprintf('Candidatos iniciales: máscara=%d, edges=%d (total: %d)\n', ...
+        CC_red_mask.NumObjects, CC_red_edges.NumObjects, ...
+        CC_red_mask.NumObjects + CC_red_edges.NumObjects);
     
-    % Analizar ambas fuentes
+    % ═════════════════════════════════════════════════════════
+    % FILTRADO SIMPLE: Analizar solo las 15 regiones más grandes
+    % ═════════════════════════════════════════════════════════
     all_regions = {};
+    all_areas = [];
+    
+    % Recopilar todas las regiones con sus áreas
     for k = 1:CC_red_mask.NumObjects
         mask_region = false(rows, cols);
         mask_region(CC_red_mask.PixelIdxList{k}) = true;
+        area = sum(mask_region(:));
+        
         all_regions{end+1} = mask_region;
+        all_areas(end+1) = area;
     end
+    
     for k = 1:CC_red_edges.NumObjects
         mask_region = false(rows, cols);
         mask_region(CC_red_edges.PixelIdxList{k}) = true;
+        area = sum(mask_region(:));
+        
         all_regions{end+1} = mask_region;
+        all_areas(end+1) = area;
     end
     
+    % Ordenar por área (de mayor a menor) y tomar las 15 más grandes
+    [~, idx_sorted] = sort(all_areas, 'descend');
+    num_to_process = min(15, length(all_regions));
+    all_regions = all_regions(idx_sorted(1:num_to_process));
+    
+    fprintf('✓ Procesando las %d regiones más grandes (reducción: %.1f%%)\n', ...
+        num_to_process, ...
+        100 * (1 - num_to_process/length(idx_sorted)))
+    
+    % ═════════════════════════════════════════════════════════
+    % PROCESAMIENTO DETALLADO (solo de candidatos filtrados)
+    % ═════════════════════════════════════════════════════════
     for idx = 1:length(all_regions)
         mask_region = all_regions{idx};
         
@@ -589,12 +623,7 @@ if sum(red_mask(:)) > 500
         perimeter = stats(1).Perimeter;
         bbox = stats(1).BoundingBox;
         
-        % Filtros básicos más permisivos
-        if area < 300 || area > rows*cols*0.75 || perimeter == 0
-            continue;
-        end
-        
-        if bbox(3) < 15 || bbox(4) < 15
+        if perimeter == 0
             continue;
         end
         
@@ -607,23 +636,21 @@ if sum(red_mask(:)) > 500
         % Verificar overlap con máscara roja
         overlap_red = sum(red_mask(:) & mask_region(:)) / area;
         
-        if overlap_red < 0.4 % Más permisivo
-            continue;
-        end
-        
-        % DETECCIÓN DE OCTÓGONOS: Múltiples métodos
+        % DETECCIÓN DE OCTÓGONOS: Métodos optimizados
         is_octagon = false;
         detection_method = '';
         
-        % MÉTODO 1: Análisis de vértices en contorno
+        % MÉTODO 1: Análisis de vértices (OPTIMIZADO)
         boundaries = bwboundaries(mask_region, 'noholes');
         best_vertices = 0;
         
         if ~isempty(boundaries)
             boundary = boundaries{1};
             
-            % Probar varias tolerancias
-            for tolerance = [0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.04]
+            % OPTIMIZACIÓN: Probar menos tolerancias (solo las críticas)
+            tolerances = [0.015, 0.025, 0.035];
+            
+            for tolerance = tolerances
                 simplified = reducepoly(boundary, tolerance);
                 num_vertices = size(simplified, 1);
                 
@@ -631,9 +658,9 @@ if sum(red_mask(:)) > 500
                     best_vertices = num_vertices;
                 end
                 
-                % Octógonos: 6-14 vértices (MUY permisivo)
+                % Octógonos: 6-14 vértices
                 if num_vertices >= 6 && num_vertices <= 14
-                    % Criterios geométricos RELAJADOS
+                    % Criterios geométricos
                     ff_ok = (form_factor > 0.70 && form_factor < 0.99);
                     sol_ok = (solidity > 0.70);
                     conv_ok = (convexity > 0.75);
@@ -687,12 +714,6 @@ if sum(red_mask(:)) > 500
             fprintf('    - Extent: %.3f %s\n', extent, tern(extent>0.40));
             fprintf('    - Overlap rojo: %.2f%%\n', overlap_red*100);
             fprintf('    - Vértices detectados: %d\n', best_vertices);
-        elseif area > 500 && overlap_red > 0.5
-            fprintf('  ✗ Región roja #%d NO clasificada como octógono:\n', idx);
-            fprintf('    - Área=%d, FF=%.3f, Sol=%.3f, Conv=%.3f, Asp=%.2f\n', ...
-                area, form_factor, solidity, convexity, aspect_ratio);
-            fprintf('    - Extent=%.3f, Overlap=%.2f%%\n', extent, overlap_red*100);
-            fprintf('    - Vértices máx: %d\n', best_vertices);
         end
     end
     

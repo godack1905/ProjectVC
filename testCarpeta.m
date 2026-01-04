@@ -17,7 +17,7 @@ descriptor_names = {
 load('trainedModel.mat');
 
 % Definir la carpeta amb les imatges de test
-test_folder = 'imatges_senyals\test\stop';  % Canvia aquesta ruta si cal
+test_folder = 'imatges_senyals\test\zona_cotxe';  % Canvia aquesta ruta si cal
 
 % Obtenir totes les imatges (PNG, JPG, JPEG)
 png_files = dir(fullfile(test_folder, '*.png'));

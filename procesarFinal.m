@@ -62,7 +62,6 @@ function mascara_final = procesarFinal(img)
     radio_max = round(min(rows, cols) / 2);
     
     if sum(red_mask(:)) > 300
-        % Método mejorado (perímetro)
         red_mask_clean = imclose(red_mask, strel('disk', 5));
         red_mask_clean = imfill(red_mask_clean, 'holes');
         red_mask_clean = bwareaopen(red_mask_clean, 300);
@@ -79,8 +78,8 @@ function mascara_final = procesarFinal(img)
             img_red_edge(~red_boundary) = 255;
             [centers, radii, ~] = imfindcircles(img_red_edge, [radio_min radio_max], ...
                 'ObjectPolarity', 'dark', ...
-                'Sensitivity', 0.97, ...
-                'EdgeThreshold', 0.02, ...
+                'Sensitivity', 0.9, ...
+                'EdgeThreshold', 0.06, ...
                 'Method', 'TwoStage');
             
             if ~isempty(centers)
@@ -121,8 +120,8 @@ function mascara_final = procesarFinal(img)
         
         [centers_blue, radii_blue, ~] = imfindcircles(img_blue_edge, [radio_min_blue radio_max], ...
             'ObjectPolarity', 'dark', ...
-            'Sensitivity', 0.97, ...
-            'EdgeThreshold', 0.02, ...
+            'Sensitivity', 0.85, ...
+            'EdgeThreshold', 0.08, ...
             'Method', 'TwoStage');
         
         if ~isempty(centers_blue)
@@ -139,11 +138,14 @@ function mascara_final = procesarFinal(img)
     
     % ═══════════════════════════════════════════════════════════
     % C) BÚSQUEDA DE RESPALDO: Círculos en imagen original
-    %    (Solo si no se encontraron círculos rojos ni azules)
     % ═══════════════════════════════════════════════════════════
     if num_circles_red == 0 && num_circles_blue == 0
+        
         [centers, radii, metric] = imfindcircles(img_enhanced, [radio_min radio_max], ...
-            'ObjectPolarity', 'dark', 'Sensitivity', 0.93, 'EdgeThreshold', 0.08);
+            'ObjectPolarity', 'dark', ...
+            'Sensitivity', 0.93, ...
+            'EdgeThreshold', 0.04, ...
+            'Method', 'TwoStage');
         
         if ~isempty(centers)
             if length(radii) > 1
@@ -175,7 +177,7 @@ function mascara_final = procesarFinal(img)
     end
     
     % ═══════════════════════════════════════════════════════════
-    % D) TRIÁNGULOS AMARILLOS
+    % D) TRIÁNGULOS AMARILLOS - OPTIMIZADO
     % ═══════════════════════════════════════════════════════════
     
     if sum(yellow_mask(:)) > 300
@@ -198,17 +200,29 @@ function mascara_final = procesarFinal(img)
         CC_mask = bwconncomp(yellow_mask_final);
         CC_edges = bwconncomp(edges_yellow_clean);
         
+        % OPTIMIZACIÓN: Filtrar por área - solo las 10 más grandes
         all_yellow_regions = {};
+        all_areas = [];
+        
         for k = 1:CC_mask.NumObjects
             mask_region = false(rows, cols);
             mask_region(CC_mask.PixelIdxList{k}) = true;
+            area = sum(mask_region(:));
             all_yellow_regions{end+1} = mask_region;
+            all_areas(end+1) = area;
         end
         for k = 1:CC_edges.NumObjects
             mask_region = false(rows, cols);
             mask_region(CC_edges.PixelIdxList{k}) = true;
+            area = sum(mask_region(:));
             all_yellow_regions{end+1} = mask_region;
+            all_areas(end+1) = area;
         end
+        
+        % Ordenar y tomar las 10 más grandes
+        [~, idx_sorted] = sort(all_areas, 'descend');
+        num_to_process = min(10, length(all_yellow_regions));
+        all_yellow_regions = all_yellow_regions(idx_sorted(1:num_to_process));
         
         for idx = 1:length(all_yellow_regions)
             mask_region = all_yellow_regions{idx};
@@ -250,13 +264,14 @@ function mascara_final = procesarFinal(img)
             
             is_triangle = false;
             
-            % MÉTODO 1: Análisis del contorno EXTERNO
+            % MÉTODO 1: Análisis del contorno - OPTIMIZADO (menos tolerancias)
             boundaries = bwboundaries(mask_region);
             
             if ~isempty(boundaries)
                 boundary = boundaries{1};
                 
-                for tolerance = [0.005, 0.008, 0.01, 0.012, 0.015, 0.018, 0.02, 0.025, 0.03, 0.035, 0.04, 0.045]
+                % OPTIMIZACIÓN: De 12 tolerancias a 4
+                for tolerance = [0.01, 0.02, 0.03, 0.04]
                     simplified = reducepoly(boundary, tolerance);
                     num_vertices = size(simplified, 1);
                     
@@ -277,7 +292,7 @@ function mascara_final = procesarFinal(img)
                 end
             end
             
-            % MÉTODO 2: Análisis del casco convexo
+            % MÉTODO 2: Análisis del casco convexo - OPTIMIZADO
             if ~is_triangle
                 [B_y, B_x] = find(mask_region);
                 if length(B_x) > 10
@@ -285,7 +300,8 @@ function mascara_final = procesarFinal(img)
                         k = convhull(B_x, B_y);
                         convex_boundary = [B_x(k), B_y(k)];
                         
-                        for tolerance = [0.01, 0.015, 0.02, 0.025, 0.03]
+                        % OPTIMIZACIÓN: De 5 tolerancias a 2
+                        for tolerance = [0.015, 0.025]
                             simplified_convex = reducepoly(convex_boundary, tolerance);
                             num_vertices_convex = size(simplified_convex, 1);
                             
@@ -354,7 +370,7 @@ function mascara_final = procesarFinal(img)
     end
     
     % ═══════════════════════════════════════════════════════════
-    % E) OCTÓGONOS ROJOS
+    % E) OCTÓGONOS ROJOS - OPTIMIZADO
     % ═══════════════════════════════════════════════════════════
     
     if sum(red_mask(:)) > 500
@@ -371,17 +387,29 @@ function mascara_final = procesarFinal(img)
         CC_red_mask = bwconncomp(red_mask_clean);
         CC_red_edges = bwconncomp(edges_red_clean);
         
+        % OPTIMIZACIÓN: Filtrar por área - solo las 15 más grandes
         all_regions = {};
+        all_areas = [];
+        
         for k = 1:CC_red_mask.NumObjects
             mask_region = false(rows, cols);
             mask_region(CC_red_mask.PixelIdxList{k}) = true;
+            area = sum(mask_region(:));
             all_regions{end+1} = mask_region;
+            all_areas(end+1) = area;
         end
         for k = 1:CC_red_edges.NumObjects
             mask_region = false(rows, cols);
             mask_region(CC_red_edges.PixelIdxList{k}) = true;
+            area = sum(mask_region(:));
             all_regions{end+1} = mask_region;
+            all_areas(end+1) = area;
         end
+        
+        % Ordenar y tomar las 15 más grandes
+        [~, idx_sorted] = sort(all_areas, 'descend');
+        num_to_process = min(15, length(all_regions));
+        all_regions = all_regions(idx_sorted(1:num_to_process));
         
         for idx = 1:length(all_regions)
             mask_region = all_regions{idx};
@@ -419,13 +447,14 @@ function mascara_final = procesarFinal(img)
             
             is_octagon = false;
             
-            % MÉTODO 1: Análisis de vértices
+            % MÉTODO 1: Análisis de vértices - OPTIMIZADO
             boundaries = bwboundaries(mask_region, 'noholes');
             
             if ~isempty(boundaries)
                 boundary = boundaries{1};
                 
-                for tolerance = [0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.04]
+                % OPTIMIZACIÓN: De 7 tolerancias a 3
+                for tolerance = [0.015, 0.025, 0.035]
                     simplified = reducepoly(boundary, tolerance);
                     num_vertices = size(simplified, 1);
                     
@@ -491,7 +520,7 @@ function mascara_final = procesarFinal(img)
                 normalized_dist = dist_center / norm(center_img);
                 
                 score = stats(1).Area * stats(1).Solidity * stats(1).Extent * (1.5 - normalized_dist*0.3);
-                score = score * 1.5;
+                score = score * 1.6;
                 
                 detecciones{end+1} = struct('mask', mask_temp, 'tipo', 'STOP (Octógono Rojo)', ...
                     'score', score, 'area', stats(1).Area, 'stats', stats(1));
