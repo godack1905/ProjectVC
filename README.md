@@ -11,3 +11,12 @@ un classificador de senyals de trànsit utilitzant les imatges a `imatges_senyal
 Estructura rellevant:
 - `imatges_senyals/` (carpetes `train/` i `test/` per classe)
 - `extractDescriptors.m`, `descriptorsTrain.m`, `processament.m`, `testImage.m`
+
+
+
+TO DO
+
+1. Normalizar
+2. THough (circulo, triangulo y octógono) y ver cual es mas probable o primero máscara de color
+3. Todo lo de dentro te lo quedas y sacas descriptores (lo que tenemos está bien)
+4. Ver si necesitamos uno o mas classification learner y cuales
