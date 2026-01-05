@@ -1,7 +1,8 @@
 %% PRÀCTICA VC - RECONEIXEMENT DE SENYALS DE TRÀNSIT
-% Funcio d'extracció de descriptors
+% Funció d'extracció de descriptors amb processament robust per a 4 models
+% VERSIÓ FUSIONADA: Processament robust + Descriptors jeràrquics
 
-function [desc_forma, desc_color, desc_detall] = extractDescriptors4Models(img)
+function [desc_forma, desc_color, desc_detall] = extractDescriptors4ModelsFusionat(img)
     
     desc_forma = zeros(1, 16);  % 16 descriptors de forma
     desc_color = zeros(1, 15);  % 15 descriptors de color
@@ -13,79 +14,68 @@ function [desc_forma, desc_color, desc_detall] = extractDescriptors4Models(img)
     end
     
     try
-        % --------------------------
-        % 1. PROCESSAMENT INICIAL
-        % --------------------------
-
-        img = im2double(img);
-        
-        img_hsv = rgb2hsv(img);
-        img_gray = rgb2gray(img);
-        
-        H = img_hsv(:,:,1);
-        S = img_hsv(:,:,2);
-        V = img_hsv(:,:,3);
+        % ============================================================
+        % FASE 1: PROCESSAMENT ROBUST DE LA IMATGE
+        % (Agafat de extractDescriptors - Document 3)
+        % ============================================================
         
         [rows, cols, ~] = size(img);
         
-        % Normalització de color
-        VAL = double(ones(rows, cols));
-        normalized_hsv = cat(3, H, S, VAL);
-        rgb_norm = hsv2rgb(normalized_hsv);
+        % Utilitzar procesarFinal per obtenir una màscara robusta
+        mascara_final = procesarFinal(img);
         
-        R = rgb_norm(:,:,1);
-        G = rgb_norm(:,:,2);
-        B = rgb_norm(:,:,3);
+        % Aplicar màscara a la imatge original per segmentació
+        img_segmented = img;
+        for c = 1:3
+            channel = img_segmented(:,:,c);
+            channel(~mascara_final) = 0;
+            img_segmented(:,:,c) = channel;
+        end
         
-        % Detecció de colors
+        % Convertir a double per treballar
+        img_segmented = im2double(img_segmented);
+        img = im2double(img);
+        
+        % Obtenir imatge en gris de la regió segmentada
+        img_gray_masked = rgb2gray(img_segmented);
+        
+        % Convertir a HSV per anàlisi de color
+        img_hsv_masked = rgb2hsv(img_segmented);
+        H = img_hsv_masked(:,:,1);
+        S = img_hsv_masked(:,:,2);
+        V = img_hsv_masked(:,:,3);
+        
+        % Obtenir components RGB de la regió segmentada
+        R = img_segmented(:,:,1);
+        G = img_segmented(:,:,2);
+        B = img_segmented(:,:,3);
+        
+        % ============================================================
+        % DETECCIÓ DE COLORS EN LA REGIÓ SEGMENTADA
+        % ============================================================
+        
+        % Detecció de vermell
         red1 = (R > 0.5) & (G < 0.5) & (B < 0.5);
         red2 = (H > 0.95 | H < 0.05) & (S > 0.4) & (V > 0.3);
         
+        % Detecció de blau
         blue1 = (B > 0.4) & (R < 0.4) & (G < 0.5);
         blue2 = (H > 0.55 & H < 0.7) & (S > 0.3) & (V > 0.2);
         
+        % Detecció de groc/taronja
         yellow1 = (R > 0.5) & (G > 0.45) & (B < 0.3);
         yellow2 = (H > 0.1 & H < 0.2) & (S > 0.3) & (V > 0.3);
         orange1 = (R > 0.7) & (G > 0.3) & (B < 0.3);
         orange2 = (H > 0.05 & H < 0.1) & (S > 0.3) & (V > 0.3);
         
-        % Màscara de colors
-        colorMask = red1 | red2 | blue1 | blue2 | yellow1 | yellow2 | orange1 | orange2;
-        
-        % Filtrar per una minima saturacio 
-        saturation_filter = S > 0.2;
-        colorMask = colorMask & saturation_filter;
-        
-        % Operacions morfológiques
-        se = strel('disk', 2);
-        morphMask = imclose(colorMask, se);
-        morphMask = imopen(morphMask, strel('disk', 1));
-        morphMask = imfill(morphMask, 'holes');
-        morphMask = bwareaopen(morphMask, 100);
-        
-        % Aplicar la màscara obtinguda a la imatge
-        img_masked = img;
-        for canal = 1:3
-            canal_img = img_masked(:,:,canal);
-            canal_img(~morphMask) = 0;
-            img_masked(:,:,canal) = canal_img;
-        end
-        
-        img_gray_masked = rgb2gray(img_masked);
-        
-        % Detecció d'edges
-        edges = edge(img_gray_masked, 'Canny', [0.05 0.15]);
-        
-        % Convinar color i edges
-        combi = morphMask | edges;
-        combi = imclose(combi, strel('disk', 2));
-        combi = imfill(combi, 'holes');
-        combi = bwareaopen(combi, 150);
-        
-        % ----------------------------
-        % 2. DESCRIPTORS DE FORMA 
-        % ----------------------------
+        % Usar la màscara final com a regió d'interès
+        combi = mascara_final;
         total_pixels = sum(combi(:));
+        
+        % ============================================================
+        % FASE 2: DESCRIPTORS DE FORMA (16 descriptors)
+        % (Agafat de extractDescriptors4Models - Document 4)
+        % ============================================================
         
         if total_pixels > 100
             try
@@ -95,12 +85,12 @@ function [desc_forma, desc_color, desc_detall] = extractDescriptors4Models(img)
                                    'Centroid');
                 
                 if ~isempty(stats)
-                    % Agafar la regio mes gran
+                    % Agafar la regió més gran
                     areas = [stats.Area];
                     [~, idx] = max(areas);
                     stats = stats(idx);
                     
-                    % Descriptores bàsicos
+                    % Descriptors bàsics
                     area = double(stats.Area);
                     perimeter = double(stats.Perimeter);
                     eccentricity = double(stats.Eccentricity);
@@ -143,7 +133,7 @@ function [desc_forma, desc_color, desc_detall] = extractDescriptors4Models(img)
                         form_factor = 0;
                     end
                     
-                    % Numero de vertexos estimat
+                    % Número de vèrtexs estimat
                     num_vertices = estimateNumVertices(combi);
                     
                     % Descriptors de Fourier
@@ -171,13 +161,12 @@ function [desc_forma, desc_color, desc_detall] = extractDescriptors4Models(img)
                         rectangularity = 0;
                     end
                     
-                    % Diametre equivalent
+                    % Diàmetre equivalent
                     if area > 0
                         equiv_diameter = sqrt(4 * area / pi);
                     else
                         equiv_diameter = 0;
                     end
-                    
                     
                     % Descriptors de forma (16 en total)
                     desc_forma = [circularity, eccentricity, solidity, extent, ...
@@ -186,19 +175,21 @@ function [desc_forma, desc_color, desc_detall] = extractDescriptors4Models(img)
                                   fourier_desc(3), perimeter, area, rectangularity, ...
                                   equiv_diameter];
                     
-                    % Asegurar que no hi ha NaN o Inf
+                    % Assegurar que no hi ha NaN o Inf
                     desc_forma(isnan(desc_forma)) = 0;
                     desc_forma(isinf(desc_forma)) = 0;
                 end
             catch ME
-                % Si n'hi ha error, ficar-hi zeros
+                % Si hi ha error, posar zeros
                 desc_forma = zeros(1, 16);
             end
         end
         
-        % ----------------------------
-        % 3. DESCRIPTORS DE COLOR
-        % ----------------------------
+        % ============================================================
+        % FASE 3: DESCRIPTORS DE COLOR (15 descriptors)
+        % (Agafat de extractDescriptors4Models - Document 4)
+        % ============================================================
+        
         if total_pixels > 0
             try
                 % Percentatges de color en la regió segmentada
@@ -213,7 +204,7 @@ function [desc_forma, desc_color, desc_detall] = extractDescriptors4Models(img)
                 yellow_total = sum(yellow1(combi) | yellow2(combi) | orange1(combi) | orange2(combi));
                 pct_yellow = yellow_total / total_pixels;
                 
-                % Estadístiques de color nomes en la regió segmentada
+                % Estadístiques de color només en la regió segmentada
                 R_region = R(combi);
                 G_region = G(combi);
                 B_region = B(combi);
@@ -261,32 +252,36 @@ function [desc_forma, desc_color, desc_detall] = extractDescriptors4Models(img)
                                  mean_saturation, mean_value, std_red, std_blue, ...
                                  red_blue_ratio, red_green_ratio, color_entropy];
                     
-                    % Asegurar que no hi ha NaN
+                    % Assegurar que no hi ha NaN
                     desc_color(isnan(desc_color)) = 0;
                     desc_color(isinf(desc_color)) = 0;
                 end
             catch
-                % Si n'hi ha algun error, ficar zeros
+                % Si hi ha algun error, posar zeros
                 desc_color = zeros(1, 15);
             end
         end
         
-        % -------------------------------------------------
-        % 4. DESCRIPTORS DETALLATS (para modelos 3-4)
-        % -------------------------------------------------
+        % ============================================================
+        % FASE 4: DESCRIPTORS DETALLATS (30 descriptors)
+        % Per als models 3-4 (circulars blaves i blanques)
+        % (Agafat de extractDescriptors4Models - Document 4)
+        % ============================================================
+        
         if total_pixels > 0
             try
                 % Percentatge de negre
                 black_mask = (V < 0.2);
                 pct_black = sum(black_mask(combi)) / total_pixels;
                 
-                % Estadistiques adicionals
+                % Estadístiques addicionals
                 std_green = std(G(combi));
                 hue_std = std(H(combi));
                 saturation_std = std(S(combi));
                 
-                % Percentages d'edges interns
-                pct_edges = sum(edges(combi)) / total_pixels;
+                % Detecció d'edges en la regió segmentada
+                edges_masked = edge(img_gray_masked, 'Canny', [0.1 0.2]);
+                pct_edges = sum(edges_masked(combi)) / total_pixels;
                 
                 % Textura GLCM
                 contrast = 0; energy = 0; homogeneity = 0;
@@ -309,20 +304,30 @@ function [desc_forma, desc_color, desc_detall] = extractDescriptors4Models(img)
                 symmetry_y = computeSymmetrySimple(combi, 'vertical');
                 
                 % Textons
-                texton1 = mean(double(edge(img_gray, 'sobel')));
-                texton2 = std(double(img_gray(:)));
+                texton1 = mean(double(edge(img_gray_masked, 'sobel')));
+                texton2 = std(double(img_gray_masked(:)));
                 
-                % Fourier adicional per a detall
+                % Fourier addicional per a detall
                 fourier4 = 0;
-                if exist('z_norm', 'var')
-                    if length(z_norm) >= 5
-                        fourier4 = abs(z_norm(5));
-                    end
+                if exist('z_norm', 'var') && length(z_norm) >= 5
+                    fourier4 = abs(z_norm(5));
                 end
                 
-                % Usar circularitat calculada avans o calcular-ne una nova
+                % Usar descriptors calculats prèviament
                 if ~exist('circularity', 'var')
                     circularity = 0;
+                end
+                if ~exist('solidity', 'var')
+                    solidity = 0;
+                end
+                if ~exist('extent', 'var')
+                    extent = 0;
+                end
+                if ~exist('compactness', 'var')
+                    compactness = 0;
+                end
+                if ~exist('fourier_desc', 'var')
+                    fourier_desc = zeros(1, 3);
                 end
                 
                 % Descriptors detallats (30 en total)
@@ -334,7 +339,7 @@ function [desc_forma, desc_color, desc_detall] = extractDescriptors4Models(img)
                               pct_edges, contrast, energy, homogeneity, ...
                               symmetry_x, symmetry_y, texton1, texton2];
                 
-                % Asegurar que no hi ha NaN y tamany correcte
+                % Assegurar que no hi ha NaN i mida correcta
                 desc_detall(isnan(desc_detall)) = 0;
                 desc_detall(isinf(desc_detall)) = 0;
                 
@@ -344,15 +349,15 @@ function [desc_forma, desc_color, desc_detall] = extractDescriptors4Models(img)
                     desc_detall = [desc_detall, zeros(1, 30 - length(desc_detall))];
                 end
                 
-            catch
-                % Si n'hi ha error, ficar zeros
+            catch ME
+                % Si hi ha error, posar zeros
                 desc_detall = zeros(1, 30);
             end
         end
         
     catch ME
         fprintf('Error en extractDescriptors4Models: %s\n', ME.message);
-        % Retornem zeros en cas d'error
+        % Retornar zeros en cas d'error
         desc_forma = zeros(1, 16);
         desc_color = zeros(1, 15);
         desc_detall = zeros(1, 30);
