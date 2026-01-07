@@ -309,8 +309,8 @@ function mascara_final = procesarFinal(img)
             
             % Metodo 3, esquinas
             if ~is_triangle && area > 400
-                mask_uint8 = uint8(mask_region) * 255;
-                corners = detectHarrisFeatures(mask_uint8, 'MinQuality', 0.01);
+                mask_harris = uint8(mask_region) * 255;
+                corners = detectHarrisFeatures(mask_harris, 'MinQuality', 0.01);
                 
                 if corners.Count >= 3 && corners.Count <= 9
                     boundary_mask = bwperim(mask_region);

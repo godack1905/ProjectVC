@@ -17,7 +17,7 @@ descriptor_names = {
 % Carregar el model entrenat
 load('trainedModel.mat');
 
-test_folder = 'imatges_senyals\test\stop';
+test_folder = 'imatges_senyals\test\zona_cotxe';
 
 % Obtenir totes les imatges (PNG, JPG, JPEG)
 png_files = dir(fullfile(test_folder, '*.png'));
