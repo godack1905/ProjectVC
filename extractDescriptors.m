@@ -1,26 +1,37 @@
 %% PRÀCTICA VC - RECONEIXEMENT DE SENYALS DE TRÀNSIT
-% Funció d'extracció de descriptors amb processament robust
+% Funció d'extracció de descriptors
 
-function descriptors = extractDescriptors(img)
-    % Extreu 25 descriptors amb processament robust previ
-    
+function descriptors = extractDescriptors(img, test_mode)
+    % En test mode descarta imatges on el preprocessament no hagi detectat cap senyal
+    if nargin < 2
+        test_mode = false;  % Per defecte està en mode entrenament
+    end
+
     descriptors = zeros(1, 25);
     
-    % Verificar que la imagen no esté vacía
+    % Verificar que la imatge no estigui buida
     if isempty(img)
         return;
     end
     
     try
-        % ------------------------------------
-        % FASE 1: PROCESAMIENTO ROBUSTO DE LA IMAGEN
-        % ------------------------------------
-        
+        %% Fase 1: Processament imatge
         [rows, cols, ~] = size(img);
         
-         mascara_final = procesarFinal(img);
+        mascara_final = procesarFinal(img);
         
-        % Aplicar máscara a la imagen original para segmentación
+        if ~any(mascara_final(:))
+            if test_mode
+                fprintf('Sense mascara, usant imatge completa\n');
+                mascara_final = true(rows, cols);
+            else
+                fprintf('Sense mascara, descartant imatge\n');
+                descriptors = zeros(1, 25);
+                return;
+            end
+        end
+        
+        % Aplicar mascara
         img_segmented = img;
         for c = 1:3
             channel = img_segmented(:,:,c);
@@ -28,16 +39,12 @@ function descriptors = extractDescriptors(img)
             img_segmented(:,:,c) = channel;
         end
         
-        % ------------------------------------
-        % FASE 2: EXTRACCIÓN DE DESCRIPTORES
-        % Sobre la región segmentada
-        % ------------------------------------
-        
-        % Usar la imagen segmentada para extraer descriptores
+        %% FASE 2: Extracció descriptors a la regió segmentada
+
         img_masked = img_segmented;
         img_gray_masked = rgb2gray(img_masked);
         
-        % Obtener componentes de color de la región segmentada
+        % Obtenir components de color de la regió segmentada
         img_hsv_masked = rgb2hsv(img_masked);
         H_masked = img_hsv_masked(:,:,1);
         S_masked = img_hsv_masked(:,:,2);
@@ -45,7 +52,7 @@ function descriptors = extractDescriptors(img)
         G_masked = img_masked(:,:,2);
         B_masked = img_masked(:,:,3);
         
-        % Detección de colores dentro de la máscara
+        % Detecció de colors dins de la màscara
         red1_masked = (R_masked > 0.5) & (G_masked < 0.5) & (B_masked < 0.5);
         red2_masked = (H_masked > 0.95 | H_masked < 0.05) & (S_masked > 0.5) & (img_hsv_masked(:,:,3) > 0.4);
         
@@ -57,22 +64,22 @@ function descriptors = extractDescriptors(img)
         orange1_masked = (R_masked > 0.8) & (G_masked > 0.4) & (B_masked < 0.3);
         orange2_masked = (H_masked > 0.05 & H_masked < 0.1) & (S_masked > 0.4) & (img_hsv_masked(:,:,3) > 0.4);
         
-        % Usar la máscara final como región de interés
+        % Usar la màscara final
         combi = mascara_final;
         total_pixels = sum(combi(:));
         
         % --------------------------
-        % DESCRIPTORES DE COLOR
+        % DESCRIPTORS DE COLOR
         % --------------------------
         
         if total_pixels > 0
-            % Porcentajes de colores dentro de la región segmentada
+            % Percentatges de colors 
             pct_red = sum((red1_masked(combi) | red2_masked(combi))) / total_pixels;
             pct_blue = sum((blue1_masked(combi) | blue2_masked(combi))) / total_pixels;
             pct_yellow = sum((yellow1_masked(combi) | yellow2_masked(combi) | ...
                              orange1_masked(combi) | orange2_masked(combi))) / total_pixels;
             
-            % Valores medios de color
+            % Valors mitjans de color
             mean_red = mean(R_masked(combi));
             mean_green = mean(G_masked(combi));
             mean_blue = mean(B_masked(combi));
@@ -82,7 +89,7 @@ function descriptors = extractDescriptors(img)
         end
         
         % -------------------------
-        % DESCRIPTORES DE FORMA
+        % DESCRIPTORS DE FORMA
         % -------------------------
         
         if total_pixels > 100
@@ -91,7 +98,7 @@ function descriptors = extractDescriptors(img)
                                 'MajorAxisLength', 'MinorAxisLength');
             
             if ~isempty(stats)
-                % Tomar la región principal (ya debería ser solo una)
+                % Prendre la regió principal (ja hauria de ser només una)
                 area = stats(1).Area;
                 perimeter = stats(1).Perimeter;
                 eccentricity = stats(1).Eccentricity;
@@ -134,7 +141,7 @@ function descriptors = extractDescriptors(img)
         end
         
         % ----------------------------
-        % DESCRIPTORES DE FOURIER
+        % DESCRIPTORS DE FOURIER
         % ----------------------------
         
         fourier_desc = zeros(1, 5);
@@ -159,15 +166,15 @@ function descriptors = extractDescriptors(img)
         end
         
         % ----------------------------
-        % DESCRIPTORES DE TEXTURA
+        % DESCRIPTORS DE TEXTURA
         % ----------------------------
         
         if total_pixels > 0
-            % Detección de edges en la región segmentada
+            % Detecció d'edges a la regió segmentada
             edges_masked = edge(img_gray_masked, 'Canny', [0.1 0.2]);
             pct_edges = sum(edges_masked(combi)) / total_pixels;
             
-            % GLCM en la región segmentada
+            % GLCM a la regió segmentada
             try
                 region_gray = img_gray_masked;
                 region_gray(~combi) = 0;
@@ -185,9 +192,7 @@ function descriptors = extractDescriptors(img)
             contrast = 0; correlation = 0; energy = 0; homogeneity = 0;
         end
         
-        % ---------------------------------
-        % CONSTRUIR VECTOR DE DESCRIPTORES
-        % ---------------------------------
+       %% Fase3: Cosntruir vector de descriptors
         
         descriptors = [
             double(pct_red), double(pct_blue), double(pct_yellow), ...

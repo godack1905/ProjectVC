@@ -256,12 +256,13 @@ function mascara_final = procesarFinal(img)
             
             is_triangle = false;
             
-            % metodo1 1: Analisis del contorno
+            %Metodo1, anal
             boundaries = bwboundaries(mask_region);
             
             if ~isempty(boundaries)
                 boundary = boundaries{1};
                 
+                % OPTIMIZACIÓN: De 12 tolerancias a 4
                 for tolerance = [0.01, 0.02, 0.03, 0.04]
                     simplified = reducepoly(boundary, tolerance);
                     num_vertices = size(simplified, 1);
@@ -290,7 +291,8 @@ function mascara_final = procesarFinal(img)
                     try
                         k = convhull(B_x, B_y);
                         convex_boundary = [B_x(k), B_y(k)];
-
+                        
+                        % OPTIMIZACIÓN: De 5 tolerancias a 2
                         for tolerance = [0.015, 0.025]
                             simplified_convex = reducepoly(convex_boundary, tolerance);
                             num_vertices_convex = size(simplified_convex, 1);
@@ -303,11 +305,12 @@ function mascara_final = procesarFinal(img)
                             end
                         end
                     catch
+                        % Ignorar errores
                     end
                 end
             end
             
-            % Metodo 3, esquinas
+            % MÉTODO 3: Detección por esquinas
             if ~is_triangle && area > 400
                 mask_uint8 = uint8(mask_region) * 255;
                 corners = detectHarrisFeatures(mask_uint8, 'MinQuality', 0.01);
@@ -335,7 +338,7 @@ function mascara_final = procesarFinal(img)
                 end
             end
             
-            % Ultima opcion, mirar directamente si es un triangulo
+            % MÉTODO 4: Criterios geométricos puros
             if ~is_triangle
                 eccentricity = stats(1).Eccentricity;
                 
@@ -358,7 +361,9 @@ function mascara_final = procesarFinal(img)
         end
     end
     
-   %% ocotogons rojos(stop)
+    % ═══════════════════════════════════════════════════════════
+    % E) OCTÓGONOS ROJOS - OPTIMIZADO
+    % ═══════════════════════════════════════════════════════════
     
     if sum(red_mask(:)) > 500
         red_mask_clean = imclose(red_mask, strel('disk', 2));
@@ -374,7 +379,7 @@ function mascara_final = procesarFinal(img)
         CC_red_mask = bwconncomp(red_mask_clean);
         CC_red_edges = bwconncomp(edges_red_clean);
         
-        % filtrar areas mas grandes solo
+        % OPTIMIZACIÓN: Filtrar por área - solo las 15 más grandes
         all_regions = {};
         all_areas = [];
         
@@ -393,8 +398,9 @@ function mascara_final = procesarFinal(img)
             all_areas(end+1) = area;
         end
         
+        % Ordenar y tomar las 15 más grandes
         [~, idx_sorted] = sort(all_areas, 'descend');
-        num_to_process = min(10, length(all_regions));
+        num_to_process = min(15, length(all_regions));
         all_regions = all_regions(idx_sorted(1:num_to_process));
         
         for idx = 1:length(all_regions)
@@ -433,12 +439,13 @@ function mascara_final = procesarFinal(img)
             
             is_octagon = false;
             
-            % metodo 1, vertices
+            % MÉTODO 1: Análisis de vértices - OPTIMIZADO
             boundaries = bwboundaries(mask_region, 'noholes');
             
             if ~isempty(boundaries)
                 boundary = boundaries{1};
                 
+                % OPTIMIZACIÓN: De 7 tolerancias a 3
                 for tolerance = [0.015, 0.025, 0.035]
                     simplified = reducepoly(boundary, tolerance);
                     num_vertices = size(simplified, 1);
@@ -460,7 +467,7 @@ function mascara_final = procesarFinal(img)
                 end
             end
             
-            % metodo 2, por forma factor
+            % MÉTODO 2: Form Factor alto
             if ~is_octagon
                 if form_factor > 0.75 && form_factor < 0.96
                     if solidity > 0.80 && convexity > 0.80 && extent > 0.45
@@ -471,7 +478,7 @@ function mascara_final = procesarFinal(img)
                 end
             end
             
-            % Ultimo recurso si no ha detectado aun el octogono
+            % MÉTODO 3: Área grande + geometría
             if ~is_octagon && area > 1000
                 if form_factor > 0.70 && solidity > 0.75 && convexity > 0.75
                     if aspect_ratio > 0.75 && aspect_ratio < 1.35
@@ -491,7 +498,7 @@ function mascara_final = procesarFinal(img)
     
     detecciones = {};
     
-    % 1. OCTÓGONOS ROJOS
+    % 1. OCTÓGONOS ROJOS (máxima prioridad)
     if num_octagons_red > 0
         CC = bwconncomp(octagon_mask_red);
         for k = 1:CC.NumObjects
@@ -505,7 +512,7 @@ function mascara_final = procesarFinal(img)
                 normalized_dist = dist_center / norm(center_img);
                 
                 score = stats(1).Area * stats(1).Solidity * stats(1).Extent * (1.5 - normalized_dist*0.3);
-                score = score * 1.6; % Da prioridad
+                score = score * 1.6;
                 
                 detecciones{end+1} = struct('mask', mask_temp, 'tipo', 'STOP (Octógono Rojo)', ...
                     'score', score, 'area', stats(1).Area, 'stats', stats(1));
@@ -513,7 +520,7 @@ function mascara_final = procesarFinal(img)
         end
     end
     
-    % 2. Triangulos amarillos
+    % 2. TRIÁNGULOS AMARILLOS
     if num_triangles_yellow > 0
         CC = bwconncomp(triangle_mask_yellow);
         for k = 1:CC.NumObjects
@@ -535,7 +542,7 @@ function mascara_final = procesarFinal(img)
         end
     end
     
-    % 3. circulos
+    % 3. CÍRCULOS ROJOS
     if num_circles_red > 0
         CC = bwconncomp(circle_mask_red);
         for k = 1:CC.NumObjects
@@ -556,6 +563,7 @@ function mascara_final = procesarFinal(img)
         end
     end
     
+    % 4. CÍRCULOS AZULES
     if num_circles_blue > 0
         CC = bwconncomp(circle_mask_blue);
         for k = 1:CC.NumObjects
@@ -597,7 +605,6 @@ function mascara_final = procesarFinal(img)
 end
 
 %% FUNCIÓN AUXILIAR
-% Filtrar regiones muy grande de fondos
 function mask_filtered = filtrar_fondo_grande(mask, rows, cols)
     max_area = rows * cols * 0.60;
     

@@ -18,7 +18,7 @@ load('trainedModel.mat');
 
 % Imatge
 img_test = imread('imatges_senyals\test\limit\002_1_0004.png');
-desc_test = extractDescriptors(img_test);
+desc_test = extractDescriptors(img_test, true);
 
 % Obtenir els descriptors de la imatge
 tabla_test = array2table(desc_test, 'VariableNames', descriptor_names);
